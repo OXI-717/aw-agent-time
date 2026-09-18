@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>KeepAlive</key><true/>
+	<key>Label</key><string>{{LABEL_PREFIX}}.watcher-input</string>
+	<key>ProgramArguments</key><array><string>aw-watcher-input</string></array>
+	<key>RunAtLoad</key><true/>
+	<key>StandardErrorPath</key><string>{{LOG_DIR}}/watcher-input.err.log</string>
+	<key>StandardOutPath</key><string>{{LOG_DIR}}/watcher-input.out.log</string>
+	<key>ThrottleInterval</key><integer>10</integer>
+</dict>
+</plist>

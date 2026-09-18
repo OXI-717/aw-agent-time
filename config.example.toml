@@ -1,0 +1,39 @@
+# Copy to config.toml for local/private overrides. config.toml is ignored by git
+# and is intentionally excluded from public exports.
+
+[tracker]
+bucket_prefix = "aw-agent-time"
+client_name = "aw-agent-time"
+event_type_prefix = "aw-agent-time"
+aw_host = "http://localhost:5600"
+
+[paths]
+# Relative paths (including AW_TRACKER_CATEGORIES_FILE) resolve beside config.toml.
+state_dir = "state"
+# Optional overrides; defaults are inside state_dir.
+# index_db = "state/jsonl_index.sqlite"
+# task_runner_cache = "state/task_runner_projects.json"
+claude_projects_dir = "~/.claude/projects"
+codex_sessions_dir = "~/.codex/sessions"
+task_runner_global_dir = "~/.task-runner"
+# Roots excluded from project discovery and manifest directory scanning.
+excluded_scan_roots = []
+# Use categories.json for your real private ActivityWatch rules, or keep the
+# bundled synthetic example.
+categories_file = "categories.example.json"
+# Optional: markdown report output. When unset, aggregate.py prints to stdout.
+# obsidian_folder = "~/Documents/time-reports"
+# Optional: roots scanned by Layer 2.5 for per-project .task-runner/status.json.
+layer25_project_roots = []
+# Optional manifest of project metadata; see README for the expected shape.
+# project_manifest = "~/Documents/projects-repos.json"
+
+[classification]
+project_umbrellas = { "project-a" = "Client A", "project-b" = "Client B" }
+portfolio_targets = { "Client A" = 0.40, "Client B" = 0.30 }
+portfolio_groups = {}
+
+[launchd]
+label_prefix = "com.example.aw-agent-time"
+python = "python3"
+# log_dir = "state/logs"

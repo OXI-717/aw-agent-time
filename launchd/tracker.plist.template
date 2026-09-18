@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>EnvironmentVariables</key>
+	<dict>
+		<key>LANG</key><string>en_US.UTF-8</string>
+		<key>LC_ALL</key><string>en_US.UTF-8</string>
+		<key>PATH</key><string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin</string>
+	</dict>
+	<key>Label</key><string>{{LABEL_PREFIX}}.tracker</string>
+	<key>ProgramArguments</key>
+	<array>
+		<string>{{PYTHON}}</string>
+		<string>-u</string>
+		<string>{{REPO_DIR}}/scripts/aggregate.py</string>
+		<string>--today</string>
+	</array>
+	<key>RunAtLoad</key><true/>
+	<key>StandardErrorPath</key><string>{{LOG_DIR}}/tracker.err.log</string>
+	<key>StandardOutPath</key><string>{{LOG_DIR}}/tracker.out.log</string>
+	<key>StartInterval</key><integer>1800</integer>
+</dict>
+</plist>

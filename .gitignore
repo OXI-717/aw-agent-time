@@ -1,0 +1,28 @@
+# Runtime state — SQLite caches, JSON caches, etc. (sometimes hundreds of MB).
+# Regeneratable from scratch via `scripts/jsonl_indexer.py`.
+state/
+config.toml
+categories.json
+docs/*.log
+docs/*.log.*
+docs/aw-*.log
+docs/launchd*.log
+docs/cargo-install.log
+
+# webui & dist artifacts (large, rebuildable)
+aw-webui-dist/
+
+# Python noise
+__pycache__/
+*.pyc
+.venv/
+.pytest_cache/
+
+# git worktrees (per-task isolation)
+.worktrees/
+
+# oxi-task-runner state (mcp.json содержит секреты — не коммитить)
+.task-runner/
+
+# Per-worktree GitHub account selector (local only).
+.gh-account

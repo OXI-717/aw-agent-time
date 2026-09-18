@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>Label</key><string>{{LABEL_PREFIX}}.watcher-tmux-pane</string>
+	<key>ProgramArguments</key>
+	<array>
+		<string>{{PYTHON}}</string>
+		<string>-u</string>
+		<string>{{REPO_DIR}}/scripts/aw_watcher_tmux_pane.py</string>
+	</array>
+	<key>RunAtLoad</key><true/>
+	<key>KeepAlive</key><true/>
+	<key>ThrottleInterval</key><integer>15</integer>
+	<key>StandardOutPath</key><string>{{LOG_DIR}}/watcher-tmux-pane.out.log</string>
+	<key>StandardErrorPath</key><string>{{LOG_DIR}}/watcher-tmux-pane.err.log</string>
+	<key>EnvironmentVariables</key>
+	<dict>
+		<key>PATH</key><string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin</string>
+	</dict>
+</dict>
+</plist>

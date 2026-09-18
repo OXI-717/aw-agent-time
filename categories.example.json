@@ -1,0 +1,24 @@
+{
+  "categories": [
+    {
+      "id": 1,
+      "name": ["Work", "Client A", "project-a"],
+      "rule": {"type": "regex", "regex": "project-a|client-a"}
+    },
+    {
+      "id": 2,
+      "name": ["Work", "Client B", "project-b"],
+      "rule": {"type": "regex", "regex": "project-b|client-b"}
+    },
+    {
+      "id": 3,
+      "name": ["Work", "Editing"],
+      "rule": {"type": "regex", "regex": "code|cursor|vim|terminal"}
+    },
+    {
+      "id": 4,
+      "name": ["Browser"],
+      "rule": {"type": "regex", "regex": "chrome|safari|firefox"}
+    }
+  ]
+}

@@ -1,0 +1,2 @@
+# Dev dependencies for running the test suite locally.
+pytest>=7.0

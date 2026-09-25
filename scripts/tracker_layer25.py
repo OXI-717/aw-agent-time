@@ -1,9 +1,15 @@
 #!/usr/bin/env python3
-"""tracker_layer25.py — autonomous agent activity from oxi-task-runner state.
+"""tracker_layer25.py — autonomous agent activity.
 
-Reads both:
-  ~/.task-runner/pipelines/*/state.json + events.jsonl   (global driver state)
-  <project>/.task-runner/status.json + events.jsonl       (per-project)
+Sources:
+  session index (jsonl_indexer.py)  — activity spans of sessions classified as
+      autonomous: `codex exec`, Codex subagents, sessions inside
+      `.task-runner/worktrees/`. Works with any orchestrator or none.
+  ~/.task-runner/pipelines/*/state.json + run.log         (optional enrichment)
+  <project>/.task-runner/status.json                       (optional enrichment)
+
+Worktree sessions are taken from task-runner when its state exists (task ids,
+results) and from the session index otherwise, never from both.
 
 Each task becomes one AW event with `{engine, project, task_id, pipeline_id, result}`.
 Bucket: `oxi-autonomous_<host>`.
@@ -16,6 +22,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import sqlite3
 import sys
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -23,11 +30,13 @@ from typing import Iterator
 
 sys.path.insert(0, str(Path(__file__).parent))
 from lib_aw import (
+    INDEX_DB_PATH,
     TASK_RUNNER_CACHE_PATH,
     TRACKER_CONFIG,
     bucket_name,
     ensure_bucket,
     iso,
+    real_project_from_cwd,
     replace_events_for_day,
 )
 
@@ -315,6 +324,48 @@ def events_from_global_pipelines() -> list[dict]:
     return out
 
 
+# ── session index reader ──────────────────────────────────────────────────────
+def events_from_session_index(start: datetime, end: datetime, skip_worktrees: bool) -> list[dict]:
+    """Autonomous sessions from the local session index, one event per activity span."""
+    if not INDEX_DB_PATH.exists():
+        print(f"[layer25] index DB not found: {INDEX_DB_PATH} — run jsonl_indexer.py", file=sys.stderr)
+        return []
+    con = sqlite3.connect(INDEX_DB_PATH)
+    con.execute("PRAGMA query_only = 1")
+    tables = {r[0] for r in con.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+    if "jsonl_spans" not in tables:
+        con.close()
+        print("[layer25] index schema is stale — run jsonl_indexer.py", file=sys.stderr)
+        return []
+    rows = con.execute(
+        "SELECT s.path, s.start_ts, s.end_ts, f.engine, f.cwd_hint, f.session_source "
+        "FROM jsonl_spans s JOIN jsonl_files f ON f.path = s.path "
+        "WHERE f.autonomous = 1 AND s.end_ts >= ? AND s.start_ts < ?",
+        (start.timestamp(), end.timestamp()),
+    ).fetchall()
+    con.close()
+    out: list[dict] = []
+    for path, a, b, engine, cwd, source in rows:
+        cwd = cwd or ""
+        if skip_worktrees and "/.task-runner/worktrees/" in cwd.replace("\\", "/"):
+            continue
+        # A span of a single record still means the agent did something.
+        dur = max(b - a, 60.0)
+        out.append({
+            "timestamp": iso(datetime.fromtimestamp(a, tz=timezone.utc)),
+            "duration": dur,
+            "data": {
+                "engine": engine,
+                "project": real_project_from_cwd(cwd) if cwd else engine,
+                "task_id": Path(path).stem,
+                "status": "?",
+                "result": source or "?",
+                "source": "session_index",
+            },
+        })
+    return out
+
+
 # ── filtering by day ──────────────────────────────────────────────────────────
 def _within(ev: dict, start: datetime, end: datetime) -> bool:
     t = _parse_iso(ev["timestamp"])
@@ -332,6 +383,7 @@ def collect_for_day(day: datetime) -> list[dict]:
     for path in iter_project_status_files():
         events.extend(events_from_status_json(path))
     events.extend(events_from_global_pipelines())
+    events.extend(events_from_session_index(start, end, skip_worktrees=bool(events)))
 
     # Filter to events that overlap with target day. Also clip duration so we don't
     # count a 17-hour-long pipeline against just today.

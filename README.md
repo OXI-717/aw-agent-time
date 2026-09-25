@@ -6,7 +6,7 @@ Local time tracking for people working with AI agents, built on ActivityWatch.
 |---|---|---|
 | 1 | Human computer activity and project attribution | Window, AFK, optional input and focused tmux pane events |
 | 2 | Human engagement with AI sessions | Local Claude Code and Codex JSONL logs |
-| 2.5 | Autonomous agent runtime | Optional task-runner state and events |
+| 2.5 | Autonomous agent runtime | Autonomous sessions from the session index (`codex exec`, Codex subagents, worktree sessions); optional task-runner enrichment |
 
 **These layers overlap; never add them into total human working hours.** Autonomous
 runs may also overlap each other. Missing observations are not proof of no work.
@@ -15,7 +15,7 @@ All daily reports currently use **UTC calendar days**, including `--today`.
 ```text
 ActivityWatch window/AFK/input ──> Layer 1 ─┐
 Claude Code / Codex JSONL ───────> Layer 2 ─┼─> local Markdown report
-Task-runner state / events ─────> Layer 2.5┘
+Autonomous sessions (+ task-runner) > Layer 2.5┘
 ```
 
 [Русская инструкция](README.ru.md) · [Synthetic report](docs/example-report.md)
@@ -57,8 +57,13 @@ python3 scripts/aggregate.py --today --no-obsidian
 
 The indexer builds or updates the local AI-session index. The aggregation command **runs the three trackers and replaces their derived daily
 buckets**, then prints a report. Original watcher events are not modified. Use
-this when you want to collect current results. Layer 2.5 needs compatible local
-task-runner data; configure `paths.layer25_project_roots` for per-project discovery.
+this when you want to collect current results. Layer 2.5 works without any
+orchestrator: it reads activity spans of autonomous sessions from the session index
+(`codex exec`, Codex subagents, any Claude Code/Codex session running inside
+`.task-runner/worktrees/`). Background Claude Code runs (`claude -p`) are not yet
+distinguishable from interactive SDK sessions, and other agents (OpenCode, OpenClaw,
+Cursor, Gemini) are not indexed yet. Compatible task-runner data, when present, adds
+task ids and results; configure `paths.layer25_project_roots` for per-project discovery.
 It is not a universal parser for every agent runner.
 
 For reporting from existing buckets without rerunning trackers or writing reports:

@@ -41,3 +41,4 @@ tests/test_launchd_render.py
 tests/test_layer1_attribution.py
 tests/test_render_markdown.py
 tests/test_tmux_focus.py
+tests/test_layer25_sessions.py

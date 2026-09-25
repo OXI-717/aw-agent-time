@@ -189,36 +189,43 @@ SPAN_GAP_SEC = 15 * 60
 
 
 class SpanTracker:
-    """Incrementally extends activity spans of one session file."""
+    """Incrementally maintains activity spans of one session file.
+
+    All stored spans of the file are loaded and rewritten on flush, so records
+    arriving out of order are merged with whichever span they are close to.
+    """
 
     def __init__(self, con: sqlite3.Connection, path: Path, reset: bool):
         self.con, self.path = con, str(path)
-        self.spans: list[list[float]] = []
-        if reset:
-            con.execute("DELETE FROM jsonl_spans WHERE path=?", (self.path,))
-            return
-        row = con.execute(
-            "SELECT rowid, start_ts, end_ts FROM jsonl_spans WHERE path=? ORDER BY end_ts DESC LIMIT 1",
-            (self.path,),
-        ).fetchone()
-        if row:
-            con.execute("DELETE FROM jsonl_spans WHERE rowid=?", (row[0],))
-            self.spans.append([row[1], row[2]])
+        self.stamps: list[list[float]] = []
+        if not reset:
+            self.stamps = [
+                [a, b] for a, b in con.execute(
+                    "SELECT start_ts, end_ts FROM jsonl_spans WHERE path=?", (self.path,)
+                )
+            ]
+        self.dirty = reset
 
     def add(self, ts: float) -> None:
-        # Records are almost always in order; an out-of-order record joins the
-        # last span only when it is within the gap on either side.
-        if self.spans:
-            a, b = self.spans[-1]
-            if a - SPAN_GAP_SEC <= ts <= b + SPAN_GAP_SEC:
-                self.spans[-1] = [min(a, ts), max(b, ts)]
-                return
-        self.spans.append([ts, ts])
+        self.stamps.append([ts, ts])
+        self.dirty = True
+
+    def spans(self) -> list[tuple[float, float]]:
+        merged: list[list[float]] = []
+        for a, b in sorted(self.stamps):
+            if merged and a - merged[-1][1] <= SPAN_GAP_SEC:
+                merged[-1][1] = max(merged[-1][1], b)
+            else:
+                merged.append([a, b])
+        return [(a, b) for a, b in merged]
 
     def flush(self) -> None:
+        if not self.dirty:
+            return
+        self.con.execute("DELETE FROM jsonl_spans WHERE path=?", (self.path,))
         self.con.executemany(
             "INSERT INTO jsonl_spans(path, start_ts, end_ts) VALUES (?,?,?)",
-            [(self.path, a, b) for a, b in self.spans],
+            [(self.path, a, b) for a, b in self.spans()],
         )
 
 

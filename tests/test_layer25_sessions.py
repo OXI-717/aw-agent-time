@@ -82,10 +82,10 @@ def test_claude_worktree_session_is_autonomous_and_skippable(tmp_path, monkeypat
     start = datetime(2026, 9, 1, tzinfo=timezone.utc)
     end = datetime(2026, 9, 2, tzinfo=timezone.utc)
     assert len(tracker_layer25.events_from_session_index(start, end, [])) == 1
-    other_project = [{"timestamp": _iso(9, 0), "duration": 600, "data": {"project": "proj-b"}}]
-    later = [{"timestamp": _iso(15, 0), "duration": 600, "data": {"project": "proj-a"}}]
-    same = [{"timestamp": _iso(8, 55), "duration": 600, "data": {"project": "proj-a"}}]
-    assert len(tracker_layer25.events_from_session_index(start, end, other_project)) == 1
+    other_task = [{"timestamp": _iso(9, 0), "duration": 600, "data": {"project": "proj-a", "task_id": "t2"}}]
+    later = [{"timestamp": _iso(15, 0), "duration": 600, "data": {"project": "proj-a", "task_id": "t1"}}]
+    same = [{"timestamp": _iso(8, 55), "duration": 600, "data": {"project": "proj-a", "task_id": "t1"}}]
+    assert len(tracker_layer25.events_from_session_index(start, end, other_task)) == 1
     assert len(tracker_layer25.events_from_session_index(start, end, later)) == 1
     assert tracker_layer25.events_from_session_index(start, end, same) == []
 
@@ -115,3 +115,12 @@ def test_partial_last_line_is_reread_when_completed(tmp_path, monkeypatch):
     _index_codex_file(con, f)
     spans = con.execute("SELECT start_ts, end_ts FROM jsonl_spans").fetchall()
     assert len(spans) == 1 and spans[0][1] - spans[0][0] == 540
+
+
+def test_out_of_order_record_merges_with_nearby_older_span(tmp_path, monkeypatch):
+    con = _setup(tmp_path, monkeypatch)
+    f = tmp_path / "rollout-e.jsonl"
+    _codex(f, "codex_exec", [(10, 0), (10, 10), (11, 0), (10, 20), (10, 30)])
+    _index_codex_file(con, f)
+    spans = sorted(con.execute("SELECT start_ts, end_ts FROM jsonl_spans").fetchall())
+    assert [b - a for a, b in spans] == [1800, 0]

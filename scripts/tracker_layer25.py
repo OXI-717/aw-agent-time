@@ -325,17 +325,23 @@ def events_from_global_pipelines() -> list[dict]:
 
 
 # ── session index reader ──────────────────────────────────────────────────────
+def _worktree_task(cwd: str) -> str:
+    """`.../.task-runner/worktrees/<task>/...` → `<task>`."""
+    tail = cwd.split("/.task-runner/worktrees/", 1)[1]
+    return tail.split("/", 1)[0]
+
+
 def _covered_by_task_runner(cwd: str, a: float, b: float, tr_events: list[dict]) -> bool:
-    """True when a task-runner event of the same project overlaps this span."""
+    """True when the task-runner event of this very worktree task overlaps the span."""
+    task = _worktree_task(cwd)
     for ev in tr_events:
+        if ev["data"].get("task_id") != task:
+            continue
         t = _parse_iso(ev["timestamp"])
         if not t:
             continue
         ea = t.timestamp()
-        eb = ea + ev["duration"]
-        if eb < a or ea > b:
-            continue
-        if f"/{ev['data'].get('project')}/.task-runner/" in cwd:
+        if ea + ev["duration"] >= a and ea <= b:
             return True
     return False
 
@@ -344,7 +350,7 @@ def events_from_session_index(start: datetime, end: datetime, tr_events: list[di
     """Autonomous sessions from the local session index, one event per activity span.
 
     A worktree session already represented by an overlapping task-runner event of
-    the same project is skipped, so it is not counted twice.
+    the same task is skipped, so it is not counted twice.
     """
     if not INDEX_DB_PATH.exists():
         print(f"[layer25] index DB not found: {INDEX_DB_PATH} — run jsonl_indexer.py", file=sys.stderr)

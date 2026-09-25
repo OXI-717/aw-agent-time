@@ -9,7 +9,7 @@ if git grep -n -I -o -E '(/Users|/home)/[A-Za-z0-9][A-Za-z0-9._-]*' -- . ':!scri
     | grep -v -E ':(/Users|/home)/example$'; then
   echo "ERROR: real home path found; use /Users/example" >&2; fail=1
 fi
-if git ls-files | grep -E '(^|/)(config\.toml|categories\.json|\.env(\.[A-Za-z0-9_-]+)?|\.gh-account)$|(^|/)state/|\.(sqlite|db)$'; then
+if git ls-files | grep -E '(^|/)(config\.toml|categories\.json|\.env(\.[A-Za-z0-9_.-]+)?|\.gh-account)$|(^|/)state/|\.(sqlite|db)$'; then
   echo "ERROR: private config, local state, database or env file is tracked" >&2; fail=1
 fi
 exit $fail

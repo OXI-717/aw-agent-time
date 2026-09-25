@@ -19,12 +19,17 @@ if git ls-files | grep -E "$PRIVATE"; then
 fi
 
 if [ -n "${CHECK_RANGE:-}" ]; then
-  if git log -p --no-color --format= "$CHECK_RANGE" -- . ':!scripts/check_public.sh' \
+  # An unreadable range must fail the gate, not look like "no matches".
+  if ! git rev-list "$CHECK_RANGE" >/dev/null; then
+    echo "ERROR: cannot read commit range $CHECK_RANGE" >&2; exit 1
+  fi
+  # -m: merge commits are diffed against each parent, so conflict resolutions count.
+  if git log -m -p --no-color --format= "$CHECK_RANGE" -- . ':!scripts/check_public.sh' \
       | grep -E '^\+' | grep -o -E "$PATHS" \
       | grep -v -x -E '(/Users|/home)/example'; then
     echo "ERROR: real home path added in $CHECK_RANGE" >&2; fail=1
   fi
-  if git log --no-color --format= --name-only "$CHECK_RANGE" | grep -E "$PRIVATE"; then
+  if git log -m --no-color --format= --name-only "$CHECK_RANGE" | grep -E "$PRIVATE"; then
     echo "ERROR: private file touched in $CHECK_RANGE" >&2; fail=1
   fi
 fi

@@ -139,3 +139,29 @@ def test_unverified_codex_session_is_not_autonomous_runtime(tmp_path, monkeypatc
     start = datetime(2026, 9, 1, tzinfo=timezone.utc)
     end = datetime(2026, 9, 2, tzinfo=timezone.utc)
     assert tracker_layer25.events_from_session_index(start, end, []) == []
+
+
+def test_coarse_pipeline_event_covers_worktree_session(tmp_path, monkeypatch):
+    con = _setup(tmp_path, monkeypatch)
+    f = tmp_path / "s2.jsonl"
+    cwd = "/work/proj-a/.task-runner/worktrees/t9"
+    _write(f, [{"timestamp": _iso(9, m), "type": "assistant", "cwd": cwd, "message": {"content": []}} for m in (0, 10)])
+    _index_claude_file(con, f)
+    con.commit()
+    start = datetime(2026, 9, 1, tzinfo=timezone.utc)
+    end = datetime(2026, 9, 2, tzinfo=timezone.utc)
+    coarse = [{"timestamp": _iso(8, 0), "duration": 7200, "data": {"project": "proj-a", "task_id": "<pipeline>"}}]
+    assert tracker_layer25.events_from_session_index(start, end, coarse) == []
+
+
+def test_single_record_span_before_midnight_reaches_next_day(tmp_path, monkeypatch):
+    con = _setup(tmp_path, monkeypatch)
+    f = tmp_path / "rollout-n.jsonl"
+    recs = [{"timestamp": "2026-09-01T23:59:30Z", "type": "session_meta",
+             "payload": {"cwd": "/work/proj-a", "originator": "codex_exec", "source": "exec"}}]
+    _write(f, recs)
+    _index_codex_file(con, f)
+    con.commit()
+    start = datetime(2026, 9, 2, tzinfo=timezone.utc)
+    end = datetime(2026, 9, 3, tzinfo=timezone.utc)
+    assert len(tracker_layer25.events_from_session_index(start, end, [])) == 1

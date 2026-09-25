@@ -337,9 +337,11 @@ def _covered_by_task_runner(cwd: str, a: float, b: float, tr_events: list[dict])
     project = cwd.split("/.task-runner/worktrees/", 1)[0].rsplit("/", 1)[-1]
     for ev in tr_events:
         # Coarse pipeline events (no per-task run.log) cover every task of the project.
-        if ev["data"].get("task_id") not in (task, "<pipeline>"):
-            continue
-        if ev["data"].get("project") not in (project, "unknown"):
+        ev_task, ev_project = ev["data"].get("task_id"), ev["data"].get("project")
+        if ev_task == task:
+            if ev_project not in (project, "unknown"):
+                continue
+        elif ev_task != "<pipeline>" or ev_project != project:
             continue
         t = _parse_iso(ev["timestamp"])
         if not t:
@@ -380,12 +382,13 @@ def events_from_session_index(start: datetime, end: datetime, tr_events: list[di
     con.close()
     out: list[dict] = []
     for path, a, b, engine, cwd, source in rows:
+        # A span of a single record still means the agent did something.
+        dur = max(b - a, 60.0)
+        b = a + dur
         cwd = cwd or ""
         norm = cwd.replace("\\", "/")
         if "/.task-runner/worktrees/" in norm and _covered_by_task_runner(norm, a, b, tr_events):
             continue
-        # A span of a single record still means the agent did something.
-        dur = max(b - a, 60.0)
         out.append({
             "timestamp": iso(datetime.fromtimestamp(a, tz=timezone.utc)),
             "duration": dur,

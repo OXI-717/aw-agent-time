@@ -334,8 +334,11 @@ def _worktree_task(cwd: str) -> str:
 def _covered_by_task_runner(cwd: str, a: float, b: float, tr_events: list[dict]) -> bool:
     """True when the task-runner event of this very worktree task overlaps the span."""
     task = _worktree_task(cwd)
+    project = cwd.split("/.task-runner/worktrees/", 1)[0].rsplit("/", 1)[-1]
     for ev in tr_events:
         if ev["data"].get("task_id") != task:
+            continue
+        if ev["data"].get("project") not in (project, "unknown"):
             continue
         t = _parse_iso(ev["timestamp"])
         if not t:

@@ -85,7 +85,9 @@ def test_claude_worktree_session_is_autonomous_and_skippable(tmp_path, monkeypat
     other_task = [{"timestamp": _iso(9, 0), "duration": 600, "data": {"project": "proj-a", "task_id": "t2"}}]
     later = [{"timestamp": _iso(15, 0), "duration": 600, "data": {"project": "proj-a", "task_id": "t1"}}]
     same = [{"timestamp": _iso(8, 55), "duration": 600, "data": {"project": "proj-a", "task_id": "t1"}}]
+    other_project = [{"timestamp": _iso(9, 0), "duration": 600, "data": {"project": "proj-b", "task_id": "t1"}}]
     assert len(tracker_layer25.events_from_session_index(start, end, other_task)) == 1
+    assert len(tracker_layer25.events_from_session_index(start, end, other_project)) == 1
     assert len(tracker_layer25.events_from_session_index(start, end, later)) == 1
     assert tracker_layer25.events_from_session_index(start, end, same) == []
 

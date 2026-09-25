@@ -35,7 +35,7 @@ DB_PATH = INDEX_DB_PATH
 # 4: synthetic Codex context records (<environment_context>, <recommended_plugins>,
 #    the AGENTS.md rule bundle) no longer count as human turns. Rows indexed under
 #    3 still carry them, so the bump forces a reparse of already-indexed files.
-PARSER_VERSION = 4
+PARSER_VERSION = 5
 
 
 def _is_claude_human_user(record: dict) -> bool:
@@ -172,7 +172,61 @@ CREATE INDEX IF NOT EXISTS ix_turns_ts        ON jsonl_turns(ts_unix);
 CREATE INDEX IF NOT EXISTS ix_turns_project   ON jsonl_turns(project);
 CREATE INDEX IF NOT EXISTS ix_turns_path      ON jsonl_turns(path);
 CREATE INDEX IF NOT EXISTS ix_turns_eng_proj  ON jsonl_turns(engine, project);
+
+-- Activity spans of any record (agent or human) per session file. Consecutive
+-- records closer than SPAN_GAP_SEC share one span. Layer 2.5 reads spans of
+-- autonomous sessions, so it works without any external orchestrator.
+CREATE TABLE IF NOT EXISTS jsonl_spans (
+  path TEXT NOT NULL,
+  start_ts REAL NOT NULL,
+  end_ts REAL NOT NULL
+);
+CREATE INDEX IF NOT EXISTS ix_spans_path ON jsonl_spans(path);
+CREATE INDEX IF NOT EXISTS ix_spans_end  ON jsonl_spans(end_ts);
 """
+
+SPAN_GAP_SEC = 15 * 60
+
+
+class SpanTracker:
+    """Incrementally maintains activity spans of one session file.
+
+    All stored spans of the file are loaded and rewritten on flush, so records
+    arriving out of order are merged with whichever span they are close to.
+    """
+
+    def __init__(self, con: sqlite3.Connection, path: Path, reset: bool):
+        self.con, self.path = con, str(path)
+        self.stamps: list[list[float]] = []
+        if not reset:
+            self.stamps = [
+                [a, b] for a, b in con.execute(
+                    "SELECT start_ts, end_ts FROM jsonl_spans WHERE path=?", (self.path,)
+                )
+            ]
+        self.dirty = reset
+
+    def add(self, ts: float) -> None:
+        self.stamps.append([ts, ts])
+        self.dirty = True
+
+    def spans(self) -> list[tuple[float, float]]:
+        merged: list[list[float]] = []
+        for a, b in sorted(self.stamps):
+            if merged and a - merged[-1][1] <= SPAN_GAP_SEC:
+                merged[-1][1] = max(merged[-1][1], b)
+            else:
+                merged.append([a, b])
+        return [(a, b) for a, b in merged]
+
+    def flush(self) -> None:
+        if not self.dirty:
+            return
+        self.con.execute("DELETE FROM jsonl_spans WHERE path=?", (self.path,))
+        self.con.executemany(
+            "INSERT INTO jsonl_spans(path, start_ts, end_ts) VALUES (?,?,?)",
+            [(self.path, a, b) for a, b in self.spans()],
+        )
 
 
 def _connect() -> sqlite3.Connection:
@@ -219,7 +273,8 @@ def _parse_claude_lines(path: Path, start_offset: int):
         f.seek(start_offset)
         while True:
             line = f.readline()
-            if not line:
+            # A line without newline is still being written; resume from its start.
+            if not line or not line.endswith(b"\n"):
                 break
             yield f.tell(), line.decode("utf-8", errors="replace")
 
@@ -248,6 +303,8 @@ def _index_claude_file(con: sqlite3.Connection, path: Path) -> int:
     inserted = 0
     new_offset = start_offset
     rows_to_insert: list[tuple] = []
+    spans = SpanTracker(con, path, reset=was_reset or start_offset == 0)
+    file_cwd = ""
     for offset, line in _parse_claude_lines(path, start_offset):
         new_offset = offset
         line = line.strip()
@@ -257,9 +314,12 @@ def _index_claude_file(con: sqlite3.Connection, path: Path) -> int:
             d = json.loads(line)
         except Exception:
             continue
+        ts = _parse_iso(d.get("timestamp"))
+        if ts:
+            spans.add(ts)
+        file_cwd = d.get("cwd") or file_cwd
         if not _is_claude_human_user(d):
             continue
-        ts = _parse_iso(d.get("timestamp"))
         if not ts:
             continue
         cwd = d.get("cwd") or ""
@@ -287,19 +347,26 @@ def _index_claude_file(con: sqlite3.Connection, path: Path) -> int:
         )
         inserted = len(rows_to_insert)
 
+    spans.flush()
+    if not file_cwd and row and not was_reset:
+        cached = con.execute("SELECT cwd_hint FROM jsonl_files WHERE path=?", (str(path),)).fetchone()
+        file_cwd = (cached and cached[0]) or ""
+    file_autonomous = int(_is_autonomous_session(
+        "claude", file_cwd, originator="", source="claude-code"
+    ))
     # After reset turn_count starts from `inserted`; otherwise it accumulates.
     new_count_clause = "?" if was_reset else "jsonl_files.turn_count + ?"
     con.execute(
-        f"INSERT INTO jsonl_files(path, engine, mtime, size, indexed_offset, indexed_at, turn_count, session_source, autonomous, parser_version) "
-        f"VALUES (?,?,?,?,?,?,?,?,?,?) "
+        f"INSERT INTO jsonl_files(path, engine, mtime, size, indexed_offset, indexed_at, turn_count, cwd_hint, session_source, autonomous, parser_version) "
+        f"VALUES (?,?,?,?,?,?,?,?,?,?,?) "
         f"ON CONFLICT(path) DO UPDATE SET "
         f"  mtime=excluded.mtime, size=excluded.size, indexed_offset=excluded.indexed_offset, "
-        f"  indexed_at=excluded.indexed_at, turn_count={new_count_clause}, "
+        f"  indexed_at=excluded.indexed_at, turn_count={new_count_clause}, cwd_hint=excluded.cwd_hint, "
         f"  session_source=excluded.session_source, autonomous=excluded.autonomous, "
         f"  parser_version=excluded.parser_version",
         (
             str(path), "claude", st.st_mtime, st.st_size, new_offset, time.time(),
-            inserted, "claude-code", 0, PARSER_VERSION, inserted,
+            inserted, file_cwd or None, "claude-code", file_autonomous, PARSER_VERSION, inserted,
         ),
     )
     return inserted
@@ -357,11 +424,12 @@ def _index_codex_file(con: sqlite3.Connection, path: Path) -> int:
         except Exception:
             pass
     rows_to_insert: list[tuple] = []
+    spans = SpanTracker(con, path, reset=was_reset or start_offset == 0)
     with path.open("rb") as f:
         f.seek(start_offset)
         while True:
             line = f.readline()
-            if not line:
+            if not line or not line.endswith(b"\n"):
                 break
             new_offset = f.tell()
             try:
@@ -371,6 +439,7 @@ def _index_codex_file(con: sqlite3.Connection, path: Path) -> int:
             ts = _parse_iso(d.get("timestamp"))
             if not ts:
                 continue
+            spans.add(ts)
             t = d.get("type") or ""
             pl = d.get("payload") or {}
             if t == "session_meta":
@@ -398,6 +467,7 @@ def _index_codex_file(con: sqlite3.Connection, path: Path) -> int:
                 session_source,
                 autonomous,
             ))
+    spans.flush()
     if rows_to_insert:
         con.executemany(
             "INSERT INTO jsonl_turns(path, ts_unix, kind, engine, project, cwd, session_id, git_branch, session_source, autonomous) "
@@ -428,6 +498,7 @@ def run(full: bool = False, quiet: bool = False) -> dict:
     con = _connect()
     if full:
         con.execute("DELETE FROM jsonl_turns")
+        con.execute("DELETE FROM jsonl_spans")
         con.execute("DELETE FROM jsonl_files")
         con.commit()
 

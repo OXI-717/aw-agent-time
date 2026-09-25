@@ -25,5 +25,7 @@ jobs:
         run: |
           curl -sSfL https://github.com/gitleaks/gitleaks/releases/download/v8.28.0/gitleaks_8.28.0_linux_x64.tar.gz | tar xz gitleaks
           ./gitleaks git . --no-banner --redact
-      - name: no real local paths or private config
+      - name: no real local paths or private config (tree and every new commit)
+        env:
+          CHECK_RANGE: ${{ github.event_name == 'pull_request' && format('{0}..{1}', github.event.pull_request.base.sha, github.event.pull_request.head.sha) || (github.event.before != '0000000000000000000000000000000000000000' && format('{0}..{1}', github.event.before, github.sha) || '') }}
         run: bash scripts/check_public.sh

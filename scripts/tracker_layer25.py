@@ -368,7 +368,10 @@ def events_from_session_index(start: datetime, end: datetime, tr_events: list[di
     rows = con.execute(
         "SELECT s.path, s.start_ts, s.end_ts, f.engine, f.cwd_hint, f.session_source "
         "FROM jsonl_spans s JOIN jsonl_files f ON f.path = s.path "
-        "WHERE f.autonomous = 1 AND s.end_ts >= ? AND s.start_ts < ?",
+        # `unverified` is the indexer's fail-closed sentinel for sessions without
+        # metadata: excluded from human time, but not evidence of autonomy either.
+        "WHERE f.autonomous = 1 AND COALESCE(f.session_source, '') != 'unverified' "
+        "AND s.end_ts >= ? AND s.start_ts < ?",
         (start.timestamp(), end.timestamp()),
     ).fetchall()
     con.close()

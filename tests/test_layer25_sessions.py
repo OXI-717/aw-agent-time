@@ -126,3 +126,16 @@ def test_out_of_order_record_merges_with_nearby_older_span(tmp_path, monkeypatch
     _index_codex_file(con, f)
     spans = sorted(con.execute("SELECT start_ts, end_ts FROM jsonl_spans").fetchall())
     assert [b - a for a, b in spans] == [1800, 0]
+
+
+def test_unverified_codex_session_is_not_autonomous_runtime(tmp_path, monkeypatch):
+    con = _setup(tmp_path, monkeypatch)
+    f = tmp_path / "rollout-u.jsonl"
+    _write(f, [{"timestamp": _iso(10, m), "type": "response_item",
+                "payload": {"type": "message", "role": "assistant"}} for m in (0, 5)])
+    _index_codex_file(con, f)
+    con.commit()
+    assert con.execute("SELECT session_source, autonomous FROM jsonl_files").fetchone() == ("unverified", 1)
+    start = datetime(2026, 9, 1, tzinfo=timezone.utc)
+    end = datetime(2026, 9, 2, tzinfo=timezone.utc)
+    assert tracker_layer25.events_from_session_index(start, end, []) == []

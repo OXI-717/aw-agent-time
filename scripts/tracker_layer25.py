@@ -325,8 +325,27 @@ def events_from_global_pipelines() -> list[dict]:
 
 
 # ── session index reader ──────────────────────────────────────────────────────
-def events_from_session_index(start: datetime, end: datetime, skip_worktrees: bool) -> list[dict]:
-    """Autonomous sessions from the local session index, one event per activity span."""
+def _covered_by_task_runner(cwd: str, a: float, b: float, tr_events: list[dict]) -> bool:
+    """True when a task-runner event of the same project overlaps this span."""
+    for ev in tr_events:
+        t = _parse_iso(ev["timestamp"])
+        if not t:
+            continue
+        ea = t.timestamp()
+        eb = ea + ev["duration"]
+        if eb < a or ea > b:
+            continue
+        if f"/{ev['data'].get('project')}/.task-runner/" in cwd:
+            return True
+    return False
+
+
+def events_from_session_index(start: datetime, end: datetime, tr_events: list[dict]) -> list[dict]:
+    """Autonomous sessions from the local session index, one event per activity span.
+
+    A worktree session already represented by an overlapping task-runner event of
+    the same project is skipped, so it is not counted twice.
+    """
     if not INDEX_DB_PATH.exists():
         print(f"[layer25] index DB not found: {INDEX_DB_PATH} — run jsonl_indexer.py", file=sys.stderr)
         return []
@@ -347,7 +366,8 @@ def events_from_session_index(start: datetime, end: datetime, skip_worktrees: bo
     out: list[dict] = []
     for path, a, b, engine, cwd, source in rows:
         cwd = cwd or ""
-        if skip_worktrees and "/.task-runner/worktrees/" in cwd.replace("\\", "/"):
+        norm = cwd.replace("\\", "/")
+        if "/.task-runner/worktrees/" in norm and _covered_by_task_runner(norm, a, b, tr_events):
             continue
         # A span of a single record still means the agent did something.
         dur = max(b - a, 60.0)
@@ -383,7 +403,7 @@ def collect_for_day(day: datetime) -> list[dict]:
     for path in iter_project_status_files():
         events.extend(events_from_status_json(path))
     events.extend(events_from_global_pipelines())
-    events.extend(events_from_session_index(start, end, skip_worktrees=bool(events)))
+    events.extend(events_from_session_index(start, end, events))
 
     # Filter to events that overlap with target day. Also clip duration so we don't
     # count a 17-hour-long pipeline against just today.

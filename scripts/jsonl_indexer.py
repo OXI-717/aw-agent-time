@@ -206,11 +206,14 @@ class SpanTracker:
             self.spans.append([row[1], row[2]])
 
     def add(self, ts: float) -> None:
-        if self.spans and ts - self.spans[-1][1] <= SPAN_GAP_SEC:
-            self.spans[-1][0] = min(self.spans[-1][0], ts)
-            self.spans[-1][1] = max(self.spans[-1][1], ts)
-        else:
-            self.spans.append([ts, ts])
+        # Records are almost always in order; an out-of-order record joins the
+        # last span only when it is within the gap on either side.
+        if self.spans:
+            a, b = self.spans[-1]
+            if a - SPAN_GAP_SEC <= ts <= b + SPAN_GAP_SEC:
+                self.spans[-1] = [min(a, ts), max(b, ts)]
+                return
+        self.spans.append([ts, ts])
 
     def flush(self) -> None:
         self.con.executemany(
@@ -263,7 +266,8 @@ def _parse_claude_lines(path: Path, start_offset: int):
         f.seek(start_offset)
         while True:
             line = f.readline()
-            if not line:
+            # A line without newline is still being written; resume from its start.
+            if not line or not line.endswith(b"\n"):
                 break
             yield f.tell(), line.decode("utf-8", errors="replace")
 
@@ -337,7 +341,7 @@ def _index_claude_file(con: sqlite3.Connection, path: Path) -> int:
         inserted = len(rows_to_insert)
 
     spans.flush()
-    if not file_cwd and row:
+    if not file_cwd and row and not was_reset:
         cached = con.execute("SELECT cwd_hint FROM jsonl_files WHERE path=?", (str(path),)).fetchone()
         file_cwd = (cached and cached[0]) or ""
     file_autonomous = int(_is_autonomous_session(
@@ -418,7 +422,7 @@ def _index_codex_file(con: sqlite3.Connection, path: Path) -> int:
         f.seek(start_offset)
         while True:
             line = f.readline()
-            if not line:
+            if not line or not line.endswith(b"\n"):
                 break
             new_offset = f.tell()
             try:

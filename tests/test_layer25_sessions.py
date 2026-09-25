@@ -65,7 +65,7 @@ def test_layer25_reads_autonomous_sessions_only(tmp_path, monkeypatch):
     con.commit()
     start = datetime(2026, 9, 1, tzinfo=timezone.utc)
     end = datetime(2026, 9, 2, tzinfo=timezone.utc)
-    events = tracker_layer25.events_from_session_index(start, end, skip_worktrees=False)
+    events = tracker_layer25.events_from_session_index(start, end, [])
     assert [e["data"]["task_id"] for e in events] == ["rollout-exec"]
     assert events[0]["duration"] == 1800
     assert events[0]["data"]["source"] == "session_index"
@@ -81,5 +81,37 @@ def test_claude_worktree_session_is_autonomous_and_skippable(tmp_path, monkeypat
     assert con.execute("SELECT autonomous FROM jsonl_files").fetchone()[0] == 1
     start = datetime(2026, 9, 1, tzinfo=timezone.utc)
     end = datetime(2026, 9, 2, tzinfo=timezone.utc)
-    assert len(tracker_layer25.events_from_session_index(start, end, skip_worktrees=False)) == 1
-    assert tracker_layer25.events_from_session_index(start, end, skip_worktrees=True) == []
+    assert len(tracker_layer25.events_from_session_index(start, end, [])) == 1
+    other_project = [{"timestamp": _iso(9, 0), "duration": 600, "data": {"project": "proj-b"}}]
+    later = [{"timestamp": _iso(15, 0), "duration": 600, "data": {"project": "proj-a"}}]
+    same = [{"timestamp": _iso(8, 55), "duration": 600, "data": {"project": "proj-a"}}]
+    assert len(tracker_layer25.events_from_session_index(start, end, other_project)) == 1
+    assert len(tracker_layer25.events_from_session_index(start, end, later)) == 1
+    assert tracker_layer25.events_from_session_index(start, end, same) == []
+
+
+def test_out_of_order_record_outside_gap_starts_new_span(tmp_path, monkeypatch):
+    con = _setup(tmp_path, monkeypatch)
+    f = tmp_path / "rollout-c.jsonl"
+    _codex(f, "codex_exec", [(11, 0), (11, 5), (10, 30)])
+    _index_codex_file(con, f)
+    spans = sorted(con.execute("SELECT start_ts, end_ts FROM jsonl_spans").fetchall())
+    assert len(spans) == 2 and spans[1][1] - spans[1][0] == 300
+
+
+def test_partial_last_line_is_reread_when_completed(tmp_path, monkeypatch):
+    con = _setup(tmp_path, monkeypatch)
+    f = tmp_path / "rollout-d.jsonl"
+    _codex(f, "codex_exec", [(10, 0), (10, 5)])
+    tail = json.dumps({"timestamp": _iso(10, 9), "type": "response_item",
+                       "payload": {"type": "message", "role": "assistant"}}) + "\n"
+    with f.open("a") as fh:
+        fh.write(tail[:20])
+    _index_codex_file(con, f)
+    with f.open("a") as fh:
+        fh.write(tail[20:])
+    import os, time
+    os.utime(f, (time.time() + 5, time.time() + 5))
+    _index_codex_file(con, f)
+    spans = con.execute("SELECT start_ts, end_ts FROM jsonl_spans").fetchall()
+    assert len(spans) == 1 and spans[0][1] - spans[0][0] == 540

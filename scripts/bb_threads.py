@@ -86,6 +86,18 @@ def _read_cache() -> tuple[dict[str, list[list]] | None, float]:
         return None, 0.0
 
 
+def _merge_maps(old: dict[str, list[list]], fresh: dict[str, list[list]]) -> dict[str, list[list]]:
+    """Union of candidates per title. One thread is (project, createdAt): its fresh
+    entry replaces the cached one (newer updatedAt); other threads' history stays,
+    so a reused title still resolves older events by time."""
+    merged: dict[str, list[list]] = {}
+    for title in old.keys() | fresh.keys():
+        by_thread = {(c[0], c[1]): c for c in old.get(title, []) if len(c) == 3}
+        by_thread.update({(c[0], c[1]): c for c in fresh.get(title, [])})
+        merged[title] = list(by_thread.values())
+    return merged
+
+
 def title_map() -> dict[str, list[list]]:
     global _MAP
     if _MAP is not None:
@@ -105,7 +117,7 @@ def title_map() -> dict[str, list[list]]:
     # Keep titles that no longer exist (renamed or deleted threads): a day's window
     # events are re-attributed on every run and during backfills, and they still
     # carry the old title. Current titles override their old entries.
-    _MAP = {**(cached or {}), **fresh}
+    _MAP = _merge_maps(cached or {}, fresh)
     CACHE_FILE.parent.mkdir(parents=True, exist_ok=True)
     CACHE_FILE.write_text(json.dumps({"version": CACHE_VERSION, "built_at": time.time(), "map": _MAP}, ensure_ascii=False))
     return _MAP

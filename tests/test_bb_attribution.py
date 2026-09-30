@@ -93,4 +93,19 @@ def test_renamed_thread_keeps_old_title_after_refresh(monkeypatch, tmp_path):
     m = bb_threads.title_map()
     assert m["old name"] == [["proj-a", 1, 2]]
     assert m["new name"] == [["proj-a", 1, 3]]
-    assert m["same"] == [["new", 1, 3]]
+    assert sorted(m["same"]) == [["new", 1, 3], ["old", 1, 2]]
+
+
+def test_reused_title_resolves_old_events_by_time(monkeypatch, tmp_path):
+    ms = T.timestamp() * 1000
+    cache = tmp_path / "bb.json"
+    cache.write_text('{"version": 2, "built_at": 0, "map": {"deploy": [["proj-a", %d, %d]]}}' % (ms - 100, ms + 100))
+    monkeypatch.setattr(bb_threads, "CACHE_FILE", cache)
+    monkeypatch.setattr(bb_threads, "_MAP", None)
+    monkeypatch.setattr(bb_threads, "_build_map", lambda: {"deploy": [["proj-b", ms + 5000, ms + 9000]]})
+    assert bb_threads.project_for_title("deploy", T) == ("proj-a", False)
+
+
+def test_same_thread_entry_is_updated_not_duplicated():
+    merged = bb_threads._merge_maps({"x": [["proj-a", 1, 2]]}, {"x": [["proj-a", 1, 5]]})
+    assert merged == {"x": [["proj-a", 1, 5]]}

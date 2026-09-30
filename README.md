@@ -137,6 +137,12 @@ Focused-pane attribution samples the most recently active tmux client. Multiple
 attached clients, stale paths, and window managers that expose only a generic title
 (such as Orca) can make attribution uncertain. Reports distinguish inferred and
 ambiguous activity; these signals are estimates, not a presence or billing audit.
+
+[bb](https://getbb.app) is supported directly: its window title is the focused thread
+title, which the tracker maps through `bb thread list` and `bb environment list` to the
+thread's checkout path and then to a project (worktrees fold into their repo). The map
+is cached for ten minutes; if the bb CLI is unavailable the last good map is reused and
+a warning is printed. Set `BB_CLI` when `bb` is not on the launchd `PATH`.
 Review grace is capped at eight minutes in the Layer 1 state machine. Actual AFK
 watcher settings can further restrict which intervals are counted.
 

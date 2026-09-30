@@ -44,3 +44,5 @@ tests/test_tmux_focus.py
 tests/test_layer25_sessions.py
 scripts/check_public.sh
 .github/workflows/ci.yml
+scripts/bb_threads.py
+tests/test_bb_attribution.py

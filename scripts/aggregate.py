@@ -416,7 +416,7 @@ def summarise_attribution(day: datetime) -> dict[str, float]:
         interval = (event_start, event_end)
         all_active.append(interval)
         source = data.get("attribution_source") or "legacy"
-        if source in ("tmux_focus", "window"):
+        if source in ("tmux_focus", "window", "bb_thread"):
             group = "direct"
         elif source == "human_turn":
             group = "inferred"

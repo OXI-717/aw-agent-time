@@ -23,6 +23,7 @@ from pathlib import Path
 from typing import Any
 
 sys.path.insert(0, str(Path(__file__).parent))
+from bb_threads import project_for_title
 from lib_aw import (
     TRACKER_CONFIG,
     HOSTNAME,
@@ -196,6 +197,12 @@ def _resolve_attribution(
             # after the probe that happened to observe it.
             valid_until = turn_ts + timedelta(seconds=HUMAN_TURN_RADIUS_SEC)
             return project, "human_turn", ambiguous, valid_until
+
+    if app == "bb":
+        # bb window title = focused thread title → thread environment path → project.
+        project, ambiguous = project_for_title(title, t)
+        if project:
+            return project, "bb_thread", ambiguous, None
 
     if any(name in app for name in terminal_apps) and title.startswith(
         ("claude_grid_", "claude_", "claude-")

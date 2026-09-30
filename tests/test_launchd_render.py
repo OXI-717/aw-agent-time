@@ -78,11 +78,11 @@ def test_renderer_preserves_supported_environment_overrides(tmp_path):
     config.write_text('[tracker]\nbucket_prefix="file-prefix"\n')
     env = dict(os.environ, AW_TRACKER_CONFIG=str(config),
         AW_TRACKER_BUCKET_PREFIX='env-prefix', AW_TRACKER_CLIENT_NAME='env-client',
-        AW_TRACKER_CATEGORIES_FILE='private-categories.json')
+        AW_TRACKER_CATEGORIES_FILE='private-categories.json', BB_CLI='/opt/example/bb')
     out = tmp_path/'jobs'
     result = subprocess.run(['bash', str(ROOT/'install.sh'), '--render-launchd',
         '--launchd-output', str(out)], env=env, capture_output=True, text=True)
     assert result.returncode == 0, result.stderr
     document = plistlib.loads((out/'com.example.aw-agent-time.tracker.plist').read_bytes())
-    for key in ('AW_TRACKER_BUCKET_PREFIX', 'AW_TRACKER_CLIENT_NAME', 'AW_TRACKER_CATEGORIES_FILE'):
+    for key in ('AW_TRACKER_BUCKET_PREFIX', 'AW_TRACKER_CLIENT_NAME', 'AW_TRACKER_CATEGORIES_FILE', 'BB_CLI'):
         assert document['EnvironmentVariables'][key] == env[key]

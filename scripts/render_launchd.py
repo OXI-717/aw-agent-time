@@ -51,7 +51,7 @@ def render(args: argparse.Namespace) -> list[Path]:
         environment = document.setdefault('EnvironmentVariables', {})
         environment.update({'PATH': os.environ.get('PATH', '/usr/bin:/bin'),
                             'PYTHON': python, 'PYTHONUNBUFFERED': '1'})
-        for key in ('AW_TRACKER_BUCKET_PREFIX', 'AW_TRACKER_CLIENT_NAME', 'AW_TRACKER_CATEGORIES_FILE'):
+        for key in ('AW_TRACKER_BUCKET_PREFIX', 'AW_TRACKER_CLIENT_NAME', 'AW_TRACKER_CATEGORIES_FILE', 'BB_CLI'):
             if key in os.environ:
                 environment[key] = os.environ[key]
         if config_path.is_file():

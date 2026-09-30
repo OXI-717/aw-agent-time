@@ -82,3 +82,15 @@ def test_old_cache_format_is_rebuilt(monkeypatch, tmp_path):
     monkeypatch.setattr(bb_threads, "_MAP", None)
     monkeypatch.setattr(bb_threads, "_build_map", lambda: {"x": [["new", 1, 2]]})
     assert bb_threads.title_map() == {"x": [["new", 1, 2]]}
+
+
+def test_renamed_thread_keeps_old_title_after_refresh(monkeypatch, tmp_path):
+    cache = tmp_path / "bb.json"
+    cache.write_text('{"version": 2, "built_at": 0, "map": {"old name": [["proj-a", 1, 2]], "same": [["old", 1, 2]]}}')
+    monkeypatch.setattr(bb_threads, "CACHE_FILE", cache)
+    monkeypatch.setattr(bb_threads, "_MAP", None)
+    monkeypatch.setattr(bb_threads, "_build_map", lambda: {"new name": [["proj-a", 1, 3]], "same": [["new", 1, 3]]})
+    m = bb_threads.title_map()
+    assert m["old name"] == [["proj-a", 1, 2]]
+    assert m["new name"] == [["proj-a", 1, 3]]
+    assert m["same"] == [["new", 1, 3]]

@@ -102,7 +102,10 @@ def title_map() -> dict[str, list[list]]:
               + ("using stale map" if cached is not None else "bb time stays unattributed"), file=sys.stderr)
         _MAP = cached or {}
         return _MAP
-    _MAP = fresh
+    # Keep titles that no longer exist (renamed or deleted threads): a day's window
+    # events are re-attributed on every run and during backfills, and they still
+    # carry the old title. Current titles override their old entries.
+    _MAP = {**(cached or {}), **fresh}
     CACHE_FILE.parent.mkdir(parents=True, exist_ok=True)
     CACHE_FILE.write_text(json.dumps({"version": CACHE_VERSION, "built_at": time.time(), "map": _MAP}, ensure_ascii=False))
     return _MAP
